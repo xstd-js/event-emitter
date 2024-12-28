@@ -31,5 +31,9 @@
   "fabrique": {
     "version": "0.2.3",
     "type": "lib"
+  },
+  "dependencies": {
+    "@xstd/noop": "^1.0.0",
+    "@xstd/undo-function": "^1.0.0"
   }
 }

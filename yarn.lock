@@ -450,12 +450,28 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@xstd/event-emitter@workspace:."
   dependencies:
+    "@xstd/noop": "npm:^1.0.0"
+    "@xstd/undo-function": "npm:^1.0.0"
     prettier: "npm:^3.4.2"
     prettier-plugin-organize-imports: "npm:^4.1.0"
     typescript: "npm:^5.7.2"
     vitest: "npm:^2.1.8"
   languageName: unknown
   linkType: soft
+
+"@xstd/noop@npm:^1.0.0":
+  version: 1.0.0
+  resolution: "@xstd/noop@npm:1.0.0"
+  checksum: 10c0/464e6647dfbeea32366eb58af5c52047e08f42cffe8c69065ffe9a3d5aaf52c9b8fb5ca08ba3782770e2040b6716577967e41873ca374212be038e27c5495f05
+  languageName: node
+  linkType: hard
+
+"@xstd/undo-function@npm:^1.0.0":
+  version: 1.0.0
+  resolution: "@xstd/undo-function@npm:1.0.0"
+  checksum: 10c0/a6ea47c75188b004330de92415e938982ea7ee9095dddc91916fd917dfe199ed3562c1a4fe052e0ae5977a5409d84b8eaab8cb7957bdae1e8507dce3a038843a
+  languageName: node
+  linkType: hard
 
 "abbrev@npm:^2.0.0":
   version: 2.0.0
