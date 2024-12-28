@@ -19,7 +19,7 @@
   "access": "public",
   "repository": {
     "type": "git",
-    "url": "https://github.com/xstd-js/event-emitter"
+    "url": "git+https://github.com/xstd-js/event-emitter.git"
   },
   "devDependencies": {
     "prettier": "^3.4.2",
