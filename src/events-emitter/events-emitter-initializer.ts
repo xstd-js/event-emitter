@@ -1,4 +1,7 @@
-import { EventsEmitterDispatchFunction, EventsEmitterInitFunction } from './events-emitter.js';
+import {
+  type EventsEmitterDispatchFunction,
+  type EventsEmitterInitFunction,
+} from './events-emitter.js';
 
 export class EventsEmitterInitializer<GEventMap extends object> {
   readonly #init: EventsEmitterInitFunction<GEventMap>;

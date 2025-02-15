@@ -1,5 +1,5 @@
-import { EventEmitterDispatchFunction } from './types/event-emitter-dispatch-function.js';
-import { EventEmitterInitFunction } from './types/event-emitter-init-function.js';
+import { type EventEmitterDispatchFunction } from './types/event-emitter-dispatch-function.js';
+import { type EventEmitterInitFunction } from './types/event-emitter-init-function.js';
 
 export class EventEmitterInitializer<GValue> {
   readonly #init: EventEmitterInitFunction<GValue>;

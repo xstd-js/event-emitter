@@ -1,5 +1,5 @@
-import { AsyncEventEmitter, AsyncEventEmitterOptions } from './async-event-emitter.js';
-import { AsyncEventEmitterDispatchFunction } from './types/async-event-emitter-dispatch-function.js';
+import { AsyncEventEmitter, type AsyncEventEmitterOptions } from './async-event-emitter.js';
+import { type AsyncEventEmitterDispatchFunction } from './types/async-event-emitter-dispatch-function.js';
 
 export class AsyncEventDispatcher<GValue> {
   readonly #emitter: AsyncEventEmitter<GValue>;

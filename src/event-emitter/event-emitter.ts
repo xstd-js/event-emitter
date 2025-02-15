@@ -1,12 +1,15 @@
 import { noop } from '@xstd/noop';
-import { UndoFunction } from '@xstd/undo-function';
-import { EventEmitterInitFunction } from './types/event-emitter-init-function.js';
-import { EventEmitterListener } from './types/event-emitter-listener.js';
+import { type UndoFunction } from '@xstd/undo-function';
+import { checkMaxListeners } from '../shared/check-max-listeners.js';
+import { type EventEmitterInitFunction } from './types/event-emitter-init-function.js';
+import { type EventEmitterListener } from './types/event-emitter-listener.js';
 
 /**
  * The optional options to provide to an event emitter.
  */
 export interface EventEmitterOptions {
+  // maximum number of listeners: used to prevent memory leaks
+  readonly maxListeners?: number;
   // if the event is dispatched only once
   readonly unique?: boolean;
   // what happen when the consumer "listen" on the EventEmitter, but its event is already dispatched.
@@ -36,6 +39,7 @@ export class EventEmitter<GValue> {
   static readonly #maxUnsubscribeCount: number = 0xff;
 
   // config
+  readonly #maxListeners: number;
   readonly #unique: boolean;
   readonly #listenAfterUniqueDispatched?: EventEmitterListenAfterUniqueDispatched;
 
@@ -53,8 +57,13 @@ export class EventEmitter<GValue> {
 
   constructor(
     init: EventEmitterInitFunction<GValue>,
-    { unique = false, listenAfterUniqueDispatched = 'default' }: EventEmitterOptions = {},
+    {
+      maxListeners = 10,
+      unique = false,
+      listenAfterUniqueDispatched = 'default',
+    }: EventEmitterOptions = {},
   ) {
+    this.#maxListeners = maxListeners;
     this.#unique = unique;
     this.#listenAfterUniqueDispatched = listenAfterUniqueDispatched;
     this.#listeners = [];
@@ -128,6 +137,8 @@ export class EventEmitter<GValue> {
       let index: number = this.#listeners.length;
       let clearCount: number = this.#clearCount;
       this.#listeners.push(listener);
+
+      checkMaxListeners(this.#listeners.length, this.#maxListeners);
 
       return (): void => {
         if (index !== -1) {

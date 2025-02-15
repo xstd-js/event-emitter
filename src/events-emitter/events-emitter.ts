@@ -1,4 +1,4 @@
-import { UndoFunction } from '@xstd/undo-function';
+import { type UndoFunction } from '@xstd/undo-function';
 import { EventDispatcher } from '../event-emitter/event-dispatcher.js';
 
 /** EVENTS EMITTER **/

@@ -1,5 +1,5 @@
-import { EventEmitter, EventEmitterOptions } from './event-emitter.js';
-import { EventEmitterDispatchFunction } from './types/event-emitter-dispatch-function.js';
+import { EventEmitter, type EventEmitterOptions } from './event-emitter.js';
+import { type EventEmitterDispatchFunction } from './types/event-emitter-dispatch-function.js';
 
 export class EventDispatcher<GValue> {
   readonly #emitter: EventEmitter<GValue>;

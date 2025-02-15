@@ -1,21 +1,17 @@
 import { noop } from '@xstd/noop';
-import { UndoFunction } from '@xstd/undo-function';
-import { AsyncEventEmitterInitFunction } from './types/async-event-emitter-init-function.js';
-import { AsyncEventEmitterListener } from './types/async-event-emitter-listener.js';
+import { type UndoFunction } from '@xstd/undo-function';
+import {
+  type EventEmitterListenAfterUniqueDispatched,
+  type EventEmitterOptions,
+} from '../event-emitter/event-emitter.js';
+import { checkMaxListeners } from '../shared/check-max-listeners.js';
+import { type AsyncEventEmitterInitFunction } from './types/async-event-emitter-init-function.js';
+import { type AsyncEventEmitterListener } from './types/async-event-emitter-listener.js';
 
 /**
  * The optional options to provide to an async event emitter.
  */
-export interface AsyncEventEmitterOptions {
-  // if the event is dispatched only once
-  readonly unique?: boolean;
-  // what happen when the consumer "listen" on the EventEmitter, but its event is already dispatched.
-  readonly listenAfterUniqueDispatched?: AsyncEventEmitterListenAfterUniqueDispatched;
-}
-
-export type AsyncEventEmitterListenAfterUniqueDispatched =
-  | 'default' // ignore the listener
-  | 'error'; // throw an error
+export interface AsyncEventEmitterOptions extends EventEmitterOptions {}
 
 /**
  * An async event emitter.
@@ -24,8 +20,9 @@ export class AsyncEventEmitter<GValue> {
   static readonly #maxUnsubscribeCount: number = 0xff;
 
   // config
+  readonly #maxListeners: number;
   readonly #unique: boolean;
-  readonly #listenAfterUniqueDispatched?: AsyncEventEmitterListenAfterUniqueDispatched;
+  readonly #listenAfterUniqueDispatched?: EventEmitterListenAfterUniqueDispatched;
 
   // the list of listeners
   #listeners: AsyncEventEmitterListener<GValue>[];
@@ -41,8 +38,13 @@ export class AsyncEventEmitter<GValue> {
 
   constructor(
     init: AsyncEventEmitterInitFunction<GValue>,
-    { unique = false, listenAfterUniqueDispatched = 'default' }: AsyncEventEmitterOptions = {},
+    {
+      maxListeners = 10,
+      unique = false,
+      listenAfterUniqueDispatched = 'default',
+    }: AsyncEventEmitterOptions = {},
   ) {
+    this.#maxListeners = maxListeners;
     this.#unique = unique;
     this.#listenAfterUniqueDispatched = listenAfterUniqueDispatched;
     this.#listeners = [];
@@ -137,6 +139,8 @@ export class AsyncEventEmitter<GValue> {
       let index: number = this.#listeners.length;
       let clearCount: number = this.#clearCount;
       this.#listeners.push(listener);
+
+      checkMaxListeners(this.#listeners.length, this.#maxListeners);
 
       return (): void => {
         if (index !== -1) {
