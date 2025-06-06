@@ -1,3 +1,4 @@
+import { Abortable } from '@xstd/abortable';
 import { noop } from '@xstd/noop';
 import { type UndoFunction } from '@xstd/undo-function';
 import { checkMaxListeners } from '../shared/check-max-listeners.js';
@@ -19,6 +20,11 @@ export interface EventEmitterOptions {
 export type EventEmitterListenAfterUniqueDispatched =
   | 'default' // ignore the listener
   | 'error'; // throw an error
+
+export interface EventEmitterAsyncIteratorOptions extends Abortable {
+  readonly bufferSize?: number;
+  readonly windowTime?: number;
+}
 
 /**
  * A simple event emitter.
@@ -154,17 +160,25 @@ export class EventEmitter<GValue> {
     }
   }
 
+  // listener(listener: EventEmitterListener<GValue>): Disposable {
+  //   const undo: UndoFunction = this.listen(listener);
+  //
+  //   return {
+  //     [Symbol.dispose]: undo,
+  //   };
+  // }
+
   /**
    * Returns a Promise resolved when the "next" event is received.
-   * @param signal An optional AbortSignal to stop awaiting this event.
+   * @param options An optional AbortSignal to stop awaiting this event.
    */
-  untilNext(signal?: AbortSignal): Promise<GValue> {
+  untilNext({ signal }: Abortable = {}): Promise<GValue> {
     return new Promise<GValue>(
       (resolve: (value: GValue) => void, reject: (reason?: any) => void): void => {
         signal?.throwIfAborted();
 
         const end = (): void => {
-          undoSelfListener();
+          stopSelfListener();
           signal?.removeEventListener('abort', onAbort);
         };
 
@@ -173,7 +187,7 @@ export class EventEmitter<GValue> {
           reject(signal!.reason);
         };
 
-        const undoSelfListener: UndoFunction = this.listen((value: GValue): void => {
+        const stopSelfListener: UndoFunction = this.listen((value: GValue): void => {
           end();
           resolve(value);
         });
@@ -183,9 +197,84 @@ export class EventEmitter<GValue> {
     );
   }
 
-  async *[Symbol.asyncIterator](signal?: AbortSignal): AsyncGenerator<GValue> {
-    while (true) {
-      yield this.untilNext(signal);
+  async *toAsyncGenerator({
+    bufferSize = Number.POSITIVE_INFINITY,
+    windowTime = Number.POSITIVE_INFINITY,
+    signal,
+  }: EventEmitterAsyncIteratorOptions = {}): AsyncGenerator<GValue> {
+    bufferSize = Math.max(0, bufferSize);
+    windowTime = Math.max(0, windowTime);
+
+    interface PendingValue {
+      readonly value: GValue;
+      readonly expirationDate: number;
     }
+
+    const values: PendingValue[] = [];
+    let pendingRead: PromiseWithResolvers<void> | undefined;
+
+    using stack: DisposableStack = new DisposableStack();
+
+    stack.defer(
+      this.listen((value: GValue): void => {
+        if (bufferSize > 0 && windowTime > 0) {
+          values.push({
+            value,
+            expirationDate: Date.now() + windowTime,
+          });
+
+          if (values.length > bufferSize) {
+            values.shift();
+          }
+        } else {
+          if (pendingRead !== undefined) {
+            values.length = 0;
+            values.push({
+              value,
+              expirationDate: Number.POSITIVE_INFINITY,
+            });
+          }
+        }
+
+        if (pendingRead !== undefined) {
+          pendingRead.resolve();
+          pendingRead = undefined;
+        }
+      }),
+    );
+
+    while (true) {
+      signal?.throwIfAborted();
+
+      // remove the expired values
+      const now: number = Date.now();
+      while (values.length > 0 && values[0].expirationDate < now) {
+        values.shift();
+      }
+
+      if (values.length > 0) {
+        yield values.shift()!.value;
+      } else {
+        pendingRead = Promise.withResolvers<void>();
+
+        const onAbort = (): void => {
+          signal!.removeEventListener('abort', onAbort);
+          pendingRead!.reject(signal!.reason);
+          pendingRead = undefined;
+        };
+
+        signal?.addEventListener('abort', onAbort);
+
+        try {
+          await pendingRead.promise;
+        } finally {
+          signal?.removeEventListener('abort', onAbort);
+        }
+      }
+    }
+  }
+
+  [Symbol.asyncIterator](): AsyncGenerator<GValue> {
+    return this.toAsyncGenerator();
   }
 }

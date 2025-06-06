@@ -1,5 +1,8 @@
 import { EventsEmitter, type EventsEmitterDispatchFunction } from './events-emitter.js';
 
+/**
+ * @deprecated
+ */
 export class EventsDispatcher<GEventMap extends object> {
   readonly #emitter: EventsEmitter<GEventMap>;
   #dispatch!: EventsEmitterDispatchFunction<GEventMap>;

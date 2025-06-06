@@ -1,6 +1,9 @@
-import { cp, glob, readFile, rm, writeFile } from 'node:fs/promises';
+import { cp, readFile, rm, writeFile } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
+import process from 'node:process';
+import { ROOT_PATH } from '../constants/root-path.constant.js';
 import { cmd } from '../helpers/cmd.js';
+import { exploreDirectoryFiles } from '../helpers/explore-directory.js';
 
 /**
  * Builds the lib.
@@ -8,9 +11,8 @@ import { cmd } from '../helpers/cmd.js';
  * @return {Promise<void>}
  */
 export async function build({ mode = 'prod' } = {}) {
-  const rootPath = '.';
-  const sourcePath = './src';
-  const destinationPath = './dist';
+  const sourcePath = join(ROOT_PATH, 'src');
+  const destinationPath = join(ROOT_PATH, 'dist');
 
   await removeDestination(destinationPath);
 
@@ -18,7 +20,7 @@ export async function build({ mode = 'prod' } = {}) {
     const [withProtected] = await Promise.all([
       buildTypescript(sourcePath),
       buildScss(sourcePath, destinationPath),
-      copyOtherFiles(rootPath, destinationPath),
+      copyOtherFiles(ROOT_PATH, destinationPath),
     ]);
 
     await buildPackageJsonFile(destinationPath, {
@@ -44,6 +46,49 @@ async function removeDestination(destinationPath) {
 }
 
 /**
+ * Returns true if `path` is a `protected` directory.
+ *
+ * @param {string} path
+ * @return boolean
+ */
+function isProtectedDirectory(path) {
+  return path.endsWith('.protected');
+}
+
+/**
+ * Returns true if `path` is inside a `protected` directory.
+ *
+ * @param {string} path
+ * @return boolean
+ */
+function isInProtectedDirectory(path) {
+  return path.includes('.protected/');
+}
+
+/**
+ * Returns true if `path` is a `private` directory.
+ *
+ * @param {string} path
+ * @return boolean
+ */
+
+function isPrivateDirectory(path) {
+  return path.endsWith('.private');
+}
+
+/**
+ * Returns true if `path` is inside a `private` directory.
+ *
+ * @param {string} path
+ * @return boolean
+ */
+function isInPrivateDirectory(path) {
+  return path.includes('.private/');
+}
+
+/* TYPESCRIPT */
+
+/**
  * Builds the typescript part.
  *
  * @param {string} sourcePath
@@ -66,52 +111,97 @@ async function buildTypescript(sourcePath) {
   return typescriptProtectedIndexFilePath !== null;
 }
 
+function generateExportEsmLine(path) {
+  return `export * from './${path.replaceAll('\\', '/').slice(0, -3)}.js';\n`;
+}
+
 /**
- * Builds the scss part.
+ * Returns true if `path` is a `typescript` file.
  *
- * @param {string} sourcePath
- * @param {string} destinationPath
- * @return {Promise<void>}
+ * @param {string} path
+ * @return boolean
  */
-async function buildScss(sourcePath, destinationPath) {
-  await copyScssFiles(sourcePath, destinationPath);
-  await buildScssIndexFile(destinationPath);
+function isTsFile(path) {
+  return path.endsWith('.ts');
+}
+
+/**
+ * Returns true if `path` is a typescript `test or spec` file.
+ *
+ * @param {string} path
+ * @return boolean
+ */
+function isTsTestOrSpecFile(path) {
+  return path.endsWith('.test.ts') || path.endsWith('.spec.ts');
+}
+
+/**
+ * Returns true if `path` is a typescript `bench` file.
+ *
+ * @param {string} path
+ * @return boolean
+ */
+function isTsBenchFile(path) {
+  return path.endsWith('.bench.ts');
+}
+
+/**
+ * Returns true if `path` is a typescript `protected` file.
+ *
+ * @param {string} path
+ * @return boolean
+ */
+function isTsProtectedFile(path) {
+  return path.endsWith('.protected.ts');
+}
+
+/**
+ * Returns true if `path` is a typescript `private` file.
+ *
+ * @param {string} path
+ * @return boolean
+ */
+function isTsPrivateFile(path) {
+  return path.endsWith('.private.ts');
 }
 
 /**
  * Builds the typescript index file used to export all public APIs.
  *
- * @param {string} cwd
+ * @param {string} sourcePath
  * @return {Promise<string>}
  */
-async function buildTypescriptIndexFile(cwd = process.cwd()) {
+async function buildTypescriptIndexFile(sourcePath) {
   console.log('Building typescript index file...');
 
-  const content = (
-    await Array.fromAsync(
-      glob('./**/*.ts', {
-        cwd,
-        exclude: (path) => {
-          return (
-            path.endsWith('.spec.ts') ||
-            path.endsWith('.test.ts') ||
-            path.includes('.private') ||
-            path.includes('.protected')
-          );
-        },
-      }),
-    )
-  )
-    .map((path) => {
-      return `export * from './${path.replaceAll('\\', '/').slice(0, -3)}.js';`;
-    })
-    .join('\n');
+  let content = '';
+
+  for await (const path of exploreDirectoryFiles(sourcePath, {
+    relativeTo: sourcePath,
+    pick: (path, { isFile }) => {
+      if (isFile) {
+        return (
+          isTsFile(path) &&
+          !(
+            isTsTestOrSpecFile(path) ||
+            isTsBenchFile(path) ||
+            isTsProtectedFile(path) ||
+            isTsPrivateFile(path)
+          )
+        );
+      } else {
+        return !(isProtectedDirectory(path) || isPrivateDirectory(path));
+      }
+    },
+  })) {
+    content += generateExportEsmLine(path);
+  }
 
   if (content === '') {
     throw new Error('Nothing exported.');
   }
 
-  const indexFilePath = join(cwd, 'index.ts');
+  const indexFilePath = join(sourcePath, 'index.ts');
   await writeFile(indexFilePath, content + '\n');
 
   return indexFilePath;
@@ -120,34 +210,37 @@ async function buildTypescriptIndexFile(cwd = process.cwd()) {
 /**
  * Builds the typescript index file used to export all protected APIs.
  *
- * @param {string} cwd
+ * @param {string} sourcePath
  * @return {Promise<string | null>}
  */
-async function buildTypescriptProtectedIndexFile(cwd = process.cwd()) {
+async function buildTypescriptProtectedIndexFile(sourcePath) {
   console.log('Building typescript protected index file...');
 
-  const content = (
-    await Array.fromAsync(
-      glob('{./**/*.protected/**/*.ts,./**/*.protected.ts,}', {
-        cwd,
-        exclude: (path) => {
-          return (
-            path.endsWith('.spec.ts') || path.endsWith('.test.ts') || path.includes('.private')
-          );
-        },
-      }),
-    )
-  )
-    .map((path) => {
-      return `export * from './${path.replaceAll('\\', '/').slice(0, -3)}.js';`;
-    })
-    .join('\n');
+  let content = '';
+
+  for await (const path of exploreDirectoryFiles(sourcePath, {
+    relativeTo: sourcePath,
+    pick: (path, { isFile }) => {
+      if (isFile) {
+        return (
+          isTsProtectedFile(path) ||
+          (isInProtectedDirectory(path) &&
+            isTsFile(path) &&
+            !(isTsTestOrSpecFile(path) || isTsBenchFile(path) || isTsPrivateFile(path)))
+        );
+      } else {
+        return !isPrivateDirectory(path);
+      }
+    },
+  })) {
+    content += generateExportEsmLine(path);
+  }
 
   if (content === '') {
     return null;
   }
 
-  const indexFilePath = join(cwd, 'index.protected.ts');
+  const indexFilePath = join(sourcePath, 'index.protected.ts');
   await writeFile(indexFilePath, content + '\n');
 
   return indexFilePath;
@@ -156,13 +249,13 @@ async function buildTypescriptProtectedIndexFile(cwd = process.cwd()) {
 /**
  * Compiles the typescript files.
  *
- * @param {string | undefined } cwd
+ * @param {string | undefined } rootPath
  * @return {Promise<void>}
  */
-async function compileTypescript(cwd = process.cwd()) {
+async function compileTypescript(rootPath = process.cwd()) {
   console.log('Compiling typescript...');
 
-  await cmd('tsc', ['-p', './tsconfig.build.json'], { cwd });
+  await cmd('tsc', ['-p', './tsconfig.build.json'], { cwd: rootPath });
 }
 
 /**
@@ -175,31 +268,112 @@ async function compileTypescript(cwd = process.cwd()) {
 async function copyTypescriptFiles(sourcePath, destinationPath) {
   console.log('Copying typescript files...');
 
-  for await (const path of glob('./**/!(*.spec|*.test).ts', { cwd: sourcePath })) {
-    await cp(join(sourcePath, path), join(destinationPath, path));
-  }
+  throw 'TODO';
+  // for await (const path of exploreDirectoryFiles(sourcePath, {
+  //   relativeTo: sourcePath,
+  //   pick: (path, { isFile }) => {
+  //     if (isFile) {
+  //       return (
+  //         path.endsWith('.ts') &&
+  //         !path.endsWith('.spec.ts') &&
+  //         !path.endsWith('.test.ts') &&
+  //         !path.endsWith('.bench.ts')
+  //       );
+  //     } else {
+  //       return true;
+  //     }
+  //   },
+  // })) {
+  //   await cp(join(sourcePath, path), join(destinationPath, path));
+  // }
 }
 
 /**
- * Builds the typescript index file used to export all public APIs.
+ * Removes the index file.
  *
- * @param {string} cwd
+ * @param {string} indexFilePath
  * @return {Promise<void>}
  */
-async function buildScssIndexFile(cwd = process.cwd()) {
+async function removeTypescriptIndexFile(indexFilePath) {
+  await rm(indexFilePath);
+}
+
+/* SCSS*/
+
+/**
+ * Builds the scss part.
+ *
+ * @param {string} sourcePath
+ * @param {string} destinationPath
+ * @return {Promise<void>}
+ */
+async function buildScss(sourcePath, destinationPath) {
+  await copyScssFiles(sourcePath, destinationPath);
+  await buildScssIndexFile(destinationPath);
+}
+
+function generateExportScssLine(path) {
+  return `@forward './${path.slice(0, -5)}';\n`;
+}
+
+/**
+ * Returns true if `path` is a `scss` file.
+ *
+ * @param {string} path
+ * @return boolean
+ */
+function isScssFile(path) {
+  return path.endsWith('.scss');
+}
+
+/**
+ * Returns true if `path` is a scss `protected` file.
+ *
+ * @param {string} path
+ * @return boolean
+ */
+function isScssProtectedFile(path) {
+  return path.endsWith('.protected.scss');
+}
+
+/**
+ * Returns true if `path` is a scss `private` file.
+ *
+ * @param {string} path
+ * @return boolean
+ */
+function isScssPrivateFile(path) {
+  return path.endsWith('.private.scss');
+}
+
+/**
+ * Builds the scss index file used to export all public styles.
+ *
+ * @param {string} sourcePath
+ * @return {Promise<void>}
+ */
+async function buildScssIndexFile(sourcePath) {
   console.log('Building scss index file...');
 
-  // TODO exclude directories too
-  const content = (await Array.fromAsync(glob('./**/!(*.private).scss', { cwd })))
-    .map((path) => {
-      return `@forward './${path.slice(0, -5)}';`;
-    })
-    .join('\n');
+  let content = '';
+
+  for await (const path of exploreDirectoryFiles(sourcePath, {
+    relativeTo: sourcePath,
+    pick: (path, { isFile }) => {
+      if (isFile) {
+        return isScssFile(path) && !(isScssProtectedFile(path) && isScssPrivateFile(path));
+      } else {
+        return !(isProtectedDirectory(path) || isPrivateDirectory(path));
+      }
+    },
+  })) {
+    content += generateExportScssLine(path);
+  }
 
   if (content === '') {
     console.log('=> No scss file to export.');
   } else {
-    const indexFilePath = join(cwd, 'index.scss');
+    const indexFilePath = join(sourcePath, 'index.scss');
     await writeFile(indexFilePath, content + '\n');
   }
 }
@@ -214,7 +388,16 @@ async function buildScssIndexFile(cwd = process.cwd()) {
 async function copyScssFiles(sourcePath, destinationPath) {
   console.log('Copying scss files...');
 
-  for await (const path of glob('./**/!(*.private).scss', { cwd: sourcePath })) {
+  for await (const path of exploreDirectoryFiles(sourcePath, {
+    relativeTo: sourcePath,
+    pick: (path, { isFile }) => {
+      if (isFile) {
+        return isScssFile(path);
+      } else {
+        return true;
+      }
+    },
+  })) {
     // await cp(join(sourcePath, path), join(destinationPath, path));
     await writeFile(
       join(destinationPath, path),
@@ -271,6 +454,8 @@ function fixScssFilePath(path) {
   return path;
 }
 
+/* OTHER */
+
 /**
  * Copies other files.
  *
@@ -291,25 +476,15 @@ async function copyOtherFiles(rootPath, destinationPath) {
 }
 
 /**
- * Removes the index file.
- *
- * @param {string} indexFilePath
- * @return {Promise<void>}
- */
-async function removeTypescriptIndexFile(indexFilePath) {
-  await rm(indexFilePath);
-}
-
-/**
  * Generates the package.json to publish.
  *
  * @param {string} destinationPath
- * @param {{ cwd?: string; mode?: 'dev' | 'rc' | 'prod', withProtected?: boolean }} options
+ * @param {{ rootPath?: string; mode?: 'dev' | 'rc' | 'prod', withProtected?: boolean }} options
  * @return {Promise<void>}
  */
 async function buildPackageJsonFile(
   destinationPath,
-  { cwd = process.cwd(), mode = 'prod', withProtected = false } = {},
+  { rootPath = process.cwd(), mode = 'prod', withProtected = false } = {},
 ) {
   console.log('Building package.json...');
 
@@ -318,7 +493,7 @@ async function buildPackageJsonFile(
   /**
    * @type any
    */
-  const pkg = JSON.parse(await readFile(join(cwd, fileName), { encoding: 'utf8' }));
+  const pkg = JSON.parse(await readFile(join(rootPath, fileName), { encoding: 'utf8' }));
 
   const indexTypesPath = './index.d.ts';
 

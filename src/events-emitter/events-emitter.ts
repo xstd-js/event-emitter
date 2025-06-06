@@ -21,6 +21,9 @@ export interface EventsEmitterListener<GValue> {
 
 /* CLASS */
 
+/**
+ * @deprecated
+ */
 export class EventsEmitter<GEventMap extends object> {
   readonly #map: Map<keyof GEventMap, EventDispatcher<any>>;
 
@@ -45,6 +48,17 @@ export class EventsEmitter<GEventMap extends object> {
 
     return source.emitter.listen(listener);
   }
+
+  // listener<GType extends keyof GEventMap>(
+  //   type: GType,
+  //   listener: EventsEmitterListener<GEventMap[GType]>,
+  // ): Disposable {
+  //   const undo: UndoFunction = this.listen<GType>(type, listener);
+  //
+  //   return {
+  //     [Symbol.dispose]: undo,
+  //   };
+  // }
 
   untilNext<GType extends keyof GEventMap>(
     type: GType,

@@ -15,6 +15,7 @@ export interface AsyncEventEmitterOptions extends EventEmitterOptions {}
 
 /**
  * An async event emitter.
+ * @deprecated
  */
 export class AsyncEventEmitter<GValue> {
   static readonly #maxUnsubscribeCount: number = 0xff;
